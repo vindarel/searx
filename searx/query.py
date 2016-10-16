@@ -41,79 +41,63 @@ class Query(object):
         self.specific = False
 
     # parse query, if tags are set, which
-    # change the serch engine or search-language
+    # change the serch engine or search-language.
     def parse_query(self):
         self.query_parts = []
 
         # split query, including whitespaces
         raw_query_parts = re.split(r'(\s+)', self.query)
 
-        parse_next = True
+        raw_query_parts = [it.strip() for it in raw_query_parts if it.strip()]
+        bangs = [it for it in raw_query_parts if it[0] in ['!', '?']]
+        languages = [it for it in raw_query_parts if it[0] in [':']]
+        query_parts = list(set(raw_query_parts) - set(bangs) - set(languages))
 
-        for query_part in raw_query_parts:
-            if not parse_next:
-                self.query_parts[-1] += query_part
-                continue
+        if languages:
+            # check if any language-code is equal with
+            # declared language-codes
+            lang = languages[0][1:].lower()
+            for lc in language_codes:
+                lang_id, lang_name, country = map(str.lower, lc)
 
-            parse_next = False
+                # if correct language-code is found
+                # set it as new search-language
+                if lang == lang_id\
+                   or lang_id.startswith(lang)\
+                   or lang == lang_name\
+                   or lang.replace('_', ' ') == country:
+                    parse_next = True
+                    self.languages.append(lang)
+                    break
 
-            # part does only contain spaces, skip
-            if query_part.isspace()\
-               or query_part == '':
+        if bangs:
+            # this forces a engine or category
+            prefix = bangs[0][1:].replace('_', ' ')
+
+            # check if prefix is equal with engine shortcut
+            if prefix in engine_shortcuts:
                 parse_next = True
-                self.query_parts.append(query_part)
-                continue
+                self.engines.append({'category': 'none',
+                                     'name': engine_shortcuts[prefix]})
 
-            # this force a language
-            if query_part[0] == ':':
-                lang = query_part[1:].lower()
+            # check if prefix is equal with engine name
+            elif prefix in engines:
+                parse_next = True
+                self.engines.append({'category': 'none',
+                                        'name': prefix})
 
-                # check if any language-code is equal with
-                # declared language-codes
-                for lc in language_codes:
-                    lang_id, lang_name, country = map(str.lower, lc)
+            # check if prefix is equal with categorie name
+            elif prefix in categories:
+                # using all engines for that search, which
+                # are declared under that categorie name
+                parse_next = True
+                self.engines.extend({'category': prefix,
+                                        'name': engine.name}
+                                    for engine in categories[prefix]
+                                    if (engine.name, prefix) not in self.disabled_engines)
 
-                    # if correct language-code is found
-                    # set it as new search-language
-                    if lang == lang_id\
-                       or lang_id.startswith(lang)\
-                       or lang == lang_name\
-                       or lang.replace('_', ' ') == country:
-                        parse_next = True
-                        self.languages.append(lang)
-                        break
-
-            # this force a engine or category
-            if query_part[0] == '!' or query_part[0] == '?':
-                prefix = query_part[1:].replace('_', ' ')
-
-                # check if prefix is equal with engine shortcut
-                if prefix in engine_shortcuts:
-                    parse_next = True
-                    self.engines.append({'category': 'none',
-                                         'name': engine_shortcuts[prefix]})
-
-                # check if prefix is equal with engine name
-                elif prefix in engines:
-                    parse_next = True
-                    self.engines.append({'category': 'none',
-                                         'name': prefix})
-
-                # check if prefix is equal with categorie name
-                elif prefix in categories:
-                    # using all engines for that search, which
-                    # are declared under that categorie name
-                    parse_next = True
-                    self.engines.extend({'category': prefix,
-                                         'name': engine.name}
-                                        for engine in categories[prefix]
-                                        if (engine.name, prefix) not in self.disabled_engines)
-
-            if query_part[0] == '!':
-                self.specific = True
-
-            # append query part to query_part list
-            self.query_parts.append(query_part)
+        # append query part to query_part list
+        self.query_parts = [' '.join([it for it in query_parts])]
 
     def changeSearchQuery(self, search_query):
         if len(self.query_parts):
